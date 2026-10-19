@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px/1.5 system-ui,-apple-system,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<title>보드게임 세트 시뮬레이션</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: a single column classroom tool — counters on top, controls, then a green felt table holding the 12 cards, then a 100-dot history strip. */
+:root {
+  --bg: #eef2ef;
+  --surface: #ffffff;
+  --fg: #17241f;
+  --muted: #5a6a63;
+  --line: #d4ddd8;
+  --accent: #116149;
+  --accent-ink: #ffffff;
+  --alert: #c2410c;
+  --alert-soft: #fde7da;
+  --felt: #1d5a47;
+  --felt-edge: #164636;
+  --card: #fffdf8;
+  --card-edge: #e3ddd0;
+  --hl: #f4b400;
+  --sel: #2b7fff;
+  --dot-yes: #b9cbc3;
+  --font-display: "Jua", "Noto Sans KR", system-ui, sans-serif;
+  --font-body: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1614; --surface: #17211e; --fg: #e7eeea; --muted: #94a59e; --line: #2a3833;
+    --accent: #4cc497; --accent-ink: #0b1a14; --alert: #ff935c; --alert-soft: #3a2116;
+    --felt: #15402f; --felt-edge: #0f3124; --card: #f7f4ec; --card-edge: #cfc8b8;
+    --hl: #f4b400; --sel: #5b9dff; --dot-yes: #3a4d46;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1614; --surface: #17211e; --fg: #e7eeea; --muted: #94a59e; --line: #2a3833;
+  --accent: #4cc497; --accent-ink: #0b1a14; --alert: #ff935c; --alert-soft: #3a2116;
+  --felt: #15402f; --felt-edge: #0f3124; --card: #f7f4ec; --card-edge: #cfc8b8;
+  --hl: #f4b400; --sel: #5b9dff; --dot-yes: #3a4d46;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+}
+.wrap {
+  max-width: 960px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+  display: flex; flex-direction: column; gap: 22px;
+}
+header { display: flex; flex-direction: column; gap: 6px; }
+.eyebrow { margin: 0; font-size: 13px; letter-spacing: .06em; color: var(--accent); font-weight: 700; }
+h1 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: clamp(28px, 5vw, 40px); line-height: 1.2; text-wrap: balance; }
+.lead { margin: 0; color: var(--muted); max-width: 60ch; }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.tile .label { font-size: 14px; color: var(--muted); font-weight: 500; }
+.tile .num { font-family: var(--font-display); font-size: clamp(34px, 6vw, 48px); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile .unit { font-size: 15px; color: var(--muted); margin-left: 4px; font-family: var(--font-body); }
+.tile.none .num { color: var(--alert); }
+.tile.rel .num { color: var(--accent); }
+.tile .sub { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.reveal {
+  align-self: flex-start; margin-top: 4px;
+  background: transparent; border: 1px dashed var(--line); color: var(--fg);
+  border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer;
+}
+.reveal:hover { border-color: var(--accent); color: var(--accent); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn {
+  font: inherit; font-weight: 700; font-size: 16px; cursor: pointer;
+  border-radius: 12px; padding: 12px 18px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg);
+  transition: transform .08s ease, background-color .15s ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.ghost { margin-left: auto; font-weight: 500; color: var(--muted); }
+.btn.ghost.armed { color: var(--alert); border-color: var(--alert); }
+button:focus-visible { outline: 3px solid var(--sel); outline-offset: 2px; }
+
+.table {
+  background: var(--felt); border: 1px solid var(--felt-edge); border-radius: 18px;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 6px 6px;
+}
+.table-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.status {
+  margin: 0; color: #f2f7f4; font-weight: 700; font-size: 17px; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.pill { display: inline-block; border-radius: 999px; padding: 3px 12px; font-size: 14px; font-weight: 700; }
+.pill.none { background: #ffd9c4; color: #8a2a00; }
+.pill.yes { background: #d6efe4; color: #0d4a36; }
+.pill.ex { background: rgba(255,255,255,.18); color: #f2f7f4; }
+.find {
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  border-radius: 999px; padding: 8px 14px; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.1); color: #f2f7f4;
+}
+.find:disabled { opacity: .45; cursor: not-allowed; }
+
+.board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 760px) { .board { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } }
+.card {
+  appearance: none; padding: 0; margin: 0; cursor: pointer;
+  background: var(--card); border: 2px solid var(--card-edge); border-radius: 10px;
+  aspect-ratio: 5 / 7; max-width: 100%; display: block;
+  box-shadow: 0 2px 0 rgba(0,0,0,.18);
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.card svg { width: 100%; height: 100%; display: block; }
+.card.sel { border-color: var(--sel); box-shadow: 0 0 0 3px var(--sel); transform: translateY(-3px); }
+.card.hl { border-color: var(--hl); box-shadow: 0 0 0 4px var(--hl); transform: translateY(-3px); }
+.card.dim { opacity: .45; }
+.pick { margin: 0; color: #dfeae5; font-size: 15px; min-height: 1.6em; }
+.pick strong { color: #ffe08a; }
+
+.history { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.history-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 22px; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dots { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 5px; }
+@media (max-width: 440px) { .dots { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+.dot { aspect-ratio: 1; border-radius: 50%; border: 1.5px dashed var(--line); max-width: 100%; }
+.dot.yes { background: var(--dot-yes); border: none; }
+.dot.no { background: var(--alert); border: none; }
+.swatch { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.swatch.yes { background: var(--dot-yes); }
+.swatch.no { background: var(--alert); }
+.swatch.empty { border: 1.5px dashed var(--line); }
+.history .sum { margin: 0; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+details.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; }
+details.rule summary { cursor: pointer; font-weight: 700; }
+details.rule p, details.rule ul { margin: 10px 0 0; color: var(--fg); max-width: 65ch; }
+details.rule li { margin-top: 4px; }
+.muted { color: var(--muted); }
+
+.graph-wrap { display: flex; flex-direction: column; gap: 12px; }
+.graph { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.graph .note { margin: 0; font-size: 14px; color: var(--muted); max-width: 65ch; }
+.nbtn { font-variant-numeric: tabular-nums; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--alert); }
+.readout { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; min-height: 1.6em; }
+.readout .v { color: var(--accent); }
+.chart-box { width: 100%; height: 300px; position: relative; }
+.chart-box canvas { width: 100%; height: 100%; display: block; }
+.tbl-wrap { overflow-x: auto; }
+.graph table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 15px; }
+.graph th, .graph td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.graph th:first-child, .graph td:first-child { text-align: left; }
+.graph th { font-size: 13px; color: var(--muted); font-weight: 500; }
+.graph td.rel { color: var(--accent); font-weight: 700; }
+.graph td.empty { text-align: center; color: var(--muted); }
+@media (max-width: 440px) { .chart-box { height: 240px; } }
+
+@media (max-width: 560px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile.rel { grid-column: 1 / -1; }
+  .btn { flex: 1 1 auto; }
+  .btn.ghost { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .btn { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <pattern id="st0" width="5" height="10" patternUnits="userSpaceOnUse"><line x1="1.5" y1="0" x2="1.5" y2="10" stroke="#d4213d" stroke-width="1.6"/></pattern>
+    <pattern id="st1" width="5" height="10" patternUnits="userSpaceOnUse"><line x1="1.5" y1="0" x2="1.5" y2="10" stroke="#16893a" stroke-width="1.6"/></pattern>
+    <pattern id="st2" width="5" height="10" patternUnits="userSpaceOnUse"><line x1="1.5" y1="0" x2="1.5" y2="10" stroke="#6a2ea3" stroke-width="1.6"/></pattern>
+  </defs>
+</svg>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow">확률로 바라본 세상 · 보드게임 세트</p>
+    <h1>보드게임 세트 시뮬레이션</h1>
+    <p class="lead">카드 81장 중 12장을 무작위로 펼쳤을 때, '세트'가 하나도 없는 경우는 얼마나 자주 생길까요?</p>
+  </header>
+
+  <section class="stats" aria-live="polite">
+    <div class="tile">
+      <span class="label">전체 시행 횟수</span>
+      <span class="num"><span id="total">0</span><span class="unit">회</span></span>
+    </div>
+    <div class="tile none">
+      <span class="label">세트가 없는 횟수</span>
+      <span class="num"><span id="none">0</span><span class="unit">회</span></span>
+    </div>
+    <div class="tile rel">
+      <span class="label">세트가 없는 경우의 상대도수</span>
+      <span class="num" id="relWrap" hidden><span id="rel">-</span></span>
+      <span class="sub" id="relSub" hidden></span>
+      <button class="reveal" id="relBtn" type="button">상대도수 보기</button>
+    </div>
+  </section>
+
+  <div class="controls">
+    <button class="btn primary" id="oneBtn" type="button">카드 12장 펼치기 (1회)</button>
+    <button class="btn primary" id="hundredBtn" type="button">100회 시뮬레이션</button>
+    <button class="btn ghost" id="resetBtn" type="button">기록 초기화</button>
+  </div>
+
+  <section class="table" aria-label="카드 테이블">
+    <div class="table-head">
+      <p class="status" id="status"></p>
+      <button class="find" id="findBtn" type="button">세트 찾기</button>
+    </div>
+    <div class="board" id="board"></div>
+    <p class="pick" id="pick">카드 3장을 눌러 세트인지 직접 확인해 보세요.</p>
+  </section>
+
+  <section class="history">
+    <div class="history-head">
+      <h2>최근 100회 결과</h2>
+      <div class="legend">
+        <span><i class="swatch yes"></i>세트 있음</span>
+        <span><i class="swatch no"></i>세트 없음</span>
+        <span><i class="swatch empty"></i>아직 안 함</span>
+      </div>
+    </div>
+    <div class="dots" id="dots" aria-hidden="true"></div>
+    <p class="sum" id="histSum"></p>
+  </section>
+
+  <details class="rule">
+    <summary>'세트'의 조건</summary>
+    <p>카드는 네 가지 속성을 가지고, 각 속성마다 3가지 종류가 있어 모두 3 × 3 × 3 × 3 = 81장입니다.</p>
+    <ul>
+      <li><b>색깔</b>: 빨강, 초록, 보라</li>
+      <li><b>모양</b>: 타원, 마름모, 물결</li>
+      <li><b>개수</b>: 1개, 2개, 3개</li>
+      <li><b>무늬</b>: 채움, 줄무늬, 빈 모양</li>
+    </ul>
+    <p>카드 3장이 네 가지 속성 <b>각각</b>에 대해 <b>모두 같거나 모두 달라야</b> '세트'입니다. 두 장은 같고 한 장만 다른 속성이 하나라도 있으면 세트가 아닙니다.</p>
+  </details>
+
+  <section class="graph-wrap">
+    <button class="reveal" id="graphToggle" type="button" aria-expanded="false" aria-controls="graphPanel">상대도수 그래프 열기</button>
+    <div class="graph" id="graphPanel" hidden>
+      <h2>시행 횟수에 따른 상대도수</h2>
+      <p class="note">카드 12장을 펼치는 시행을 정한 횟수만큼 반복하면서, 세트가 없는 경우의 상대도수가 어떻게 변하는지 그래프로 그립니다. 이 실험은 위쪽 기록과 따로 계산됩니다.</p>
+      <div class="controls">
+        <button class="btn primary nbtn" type="button" data-n="100">100회</button>
+        <button class="btn primary nbtn" type="button" data-n="1000">1,000회</button>
+        <button class="btn primary nbtn" type="button" data-n="10000">10,000회</button>
+      </div>
+      <label class="check" for="refChk"><input type="checkbox" id="refChk"> 기준선(0.032) 표시</label>
+      <p class="readout" id="readout">버튼을 눌러 시행 횟수를 고르세요.</p>
+      <div class="chart-box"><canvas id="chart" aria-label="시행 횟수에 따른 세트가 없는 경우의 상대도수 그래프" role="img"></canvas></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>시행 횟수</th><th>세트가 없는 횟수</th><th>상대도수</th></tr></thead>
+          <tbody id="rows"><tr><td class="empty" colspan="3">아직 실험한 결과가 없습니다.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var INK = ["#d4213d", "#16893a", "#6a2ea3"];
+  var COLOR_NAME = ["빨강", "초록", "보라"];
+  var SHAPE_NAME = ["타원", "마름모", "물결"];
+  var FILL_NAME = ["채움", "줄무늬", "빈 모양"];
+  var ATTR_NAME = ["색깔", "모양", "개수", "무늬"];
+  var STORE = "set-sim-v1";
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function attr(i) { return [i % 3, Math.floor(i / 3) % 3, Math.floor(i / 9) % 3, Math.floor(i / 27) % 3]; }
+  function third(a, b) {
+    var r = 0, m = 1;
+    for (var k = 0; k < 4; k++) {
+      var x = Math.floor(a / m) % 3, y = Math.floor(b / m) % 3;
+      r += ((6 - x - y) % 3) * m; m *= 3;
+    }
+    return r;
+  }
+  function deal() {
+    var deck = []; for (var i = 0; i < 81; i++) deck.push(i);
+    for (var j = 0; j < 12; j++) {
+      var r = j + Math.floor(Math.random() * (81 - j));
+      var t = deck[j]; deck[j] = deck[r]; deck[r] = t;
+    }
+    return deck.slice(0, 12);
+  }
+  function findSets(cards) {
+    var pos = {}; cards.forEach(function (c, i) { pos[c] = i; });
+    var sets = [];
+    for (var i = 0; i < 12; i++) for (var j = i + 1; j < 12; j++) {
+      var k = pos[third(cards[i], cards[j])];
+      if (k !== undefined && k > j) sets.push([i, j, k]);
+    }
+    return sets;
+  }
+
+  function shapePath(shape, y) {
+    if (shape === 0) return '<rect x="18" y="' + (y - 12) + '" width="64" height="24" rx="12"';
+    if (shape === 1) return '<polygon points="16,' + y + ' 50,' + (y - 13) + ' 84,' + y + ' 50,' + (y + 13) + '"';
+    var d = "M17," + (y + 7) +
+      " C15," + (y - 9) + " 34," + (y - 15) + " 50," + (y - 6) +
+      " C60," + (y - 1) + " 70," + (y - 14) + " 82," + (y - 9) +
+      " C87," + (y + 6) + " 68," + (y + 15) + " 50," + (y + 6) +
+      " C40," + (y + 1) + " 28," + (y + 15) + " 17," + (y + 7) + " Z";
+    return '<path d="' + d + '"';
+  }
+  function cardSVG(c) {
+    var a = attr(c), col = a[0], shape = a[1], n = a[2] + 1, fill = a[3];
+    var ys = n === 1 ? [70] : n === 2 ? [54, 86] : [38, 70, 102];
+    var f = fill === 0 ? INK[col] : fill === 1 ? "url(#st" + col + ")" : "none";
+    var body = ys.map(function (y) {
+      return shapePath(shape, y) + ' fill="' + f + '" stroke="' + INK[col] + '" stroke-width="2.6" stroke-linejoin="round"/>';
+    }).join("");
+    return '<svg viewBox="0 0 100 140" role="img" aria-hidden="true">' + body + "</svg>";
+  }
+  function cardLabel(c) {
+    var a = attr(c);
+    return COLOR_NAME[a[0]] + " " + SHAPE_NAME[a[1]] + " " + (a[2] + 1) + "개 " + FILL_NAME[a[3]];
+  }
+
+  var state = { total: 0, none: 0, history: [], cards: [], sets: [], example: true, hl: -1, selected: [], relShown: false, running: false };
+
+  try {
+    var saved = JSON.parse(localStorage.getItem(STORE) || "null");
+    if (saved && typeof saved.total === "number") {
+      state.total = saved.total; state.none = saved.none;
+      state.history = Array.isArray(saved.history) ? saved.history.slice(-100) : [];
+    }
+  } catch (e) {}
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ total: state.total, none: state.none, history: state.history })); } catch (e) {}
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var board = $("board"), dots = $("dots");
+
+  function renderStats() {
+    $("total").textContent = state.total.toLocaleString("ko-KR");
+    $("none").textContent = state.none.toLocaleString("ko-KR");
+    if (state.relShown) {
+      var rel = state.total ? state.none / state.total : 0;
+      $("rel").textContent = state.total ? rel.toFixed(3) : "-";
+      $("relSub").textContent = state.total ? state.none + " ÷ " + state.total + " ≈ " + (rel * 100).toFixed(1) + "%" : "시뮬레이션을 하면 계산됩니다";
+    }
+  }
+  function renderDots() {
+    var html = "";
+    for (var i = 0; i < 100; i++) {
+      var h = state.history[i];
+      html += '<i class="dot' + (h === undefined ? "" : h ? " no" : " yes") + '"></i>';
+    }
+    dots.innerHTML = html;
+    var n = state.history.length, k = state.history.filter(Boolean).length;
+    $("histSum").textContent = n ? "최근 " + n + "회 중 세트가 없는 경우: " + k + "회" : "아직 시행한 기록이 없습니다.";
+  }
+  function renderBoard() {
+    board.innerHTML = state.cards.map(function (c, i) {
+      return '<button type="button" class="card" data-i="' + i + '" aria-label="' + cardLabel(c) + '">' + cardSVG(c) + "</button>";
+    }).join("");
+    paintMarks();
+  }
+  function paintMarks() {
+    var hlSet = state.hl >= 0 ? state.sets[state.hl] : null;
+    Array.prototype.forEach.call(board.children, function (el, i) {
+      el.classList.toggle("sel", state.selected.indexOf(i) >= 0);
+      el.classList.toggle("hl", !!hlSet && hlSet.indexOf(i) >= 0);
+      el.classList.toggle("dim", !!hlSet && hlSet.indexOf(i) < 0);
+    });
+  }
+  function renderStatus(extra) {
+    var s = $("status"), n = state.sets.length;
+    if (state.example) {
+      s.innerHTML = '<span class="pill ex">예시</span> 버튼을 눌러 시뮬레이션을 시작하세요';
+    } else if (n === 0) {
+      s.innerHTML = '<span class="pill none">세트 없음</span> 이 12장에는 세트가 하나도 없어요!';
+    } else {
+      s.innerHTML = '<span class="pill yes">세트 있음</span> 이 12장에는 세트가 ' + n + "개 있어요";
+    }
+    if (extra) s.innerHTML += ' <span style="font-weight:500;opacity:.85">· ' + extra + "</span>";
+    var fb = $("findBtn");
+    fb.disabled = n === 0 || state.running;
+    fb.textContent = n === 0 ? "찾을 세트 없음" : state.hl >= 0 ? "다음 세트 (" + (state.hl + 1) + "/" + n + ")" : "세트 찾기";
+  }
+
+  function trial() {
+    var cards = deal(), sets = findSets(cards), noSet = sets.length === 0;
+    state.total++; if (noSet) state.none++;
+    state.history.push(noSet); if (state.history.length > 100) state.history.shift();
+    return { cards: cards, sets: sets };
+  }
+  function show(res, extra) {
+    state.cards = res.cards; state.sets = res.sets; state.example = false;
+    state.hl = -1; state.selected = [];
+    $("pick").innerHTML = "카드 3장을 눌러 세트인지 직접 확인해 보세요.";
+    renderBoard(); renderStatus(extra);
+  }
+  function setRunning(on) {
+    state.running = on;
+    ["oneBtn", "hundredBtn", "resetBtn"].forEach(function (id) { $(id).disabled = on; });
+    $("findBtn").disabled = on || state.sets.length === 0;
+  }
+
+  $("oneBtn").addEventListener("click", function () {
+    disarm();
+    show(trial()); renderStats(); renderDots(); save();
+  });
+
+  $("hundredBtn").addEventListener("click", function () {
+    disarm();
+    var startNone = state.none, done = 0, last = null;
+    setRunning(true);
+    function finish() {
+      setRunning(false);
+      show(last, "100회 중 세트 없음 " + (state.none - startNone) + "회");
+      renderStats(); renderDots(); save();
+    }
+    if (reduceMotion) {
+      while (done < 100) { last = trial(); done++; }
+      finish(); return;
+    }
+    function step() {
+      for (var i = 0; i < 2 && done < 100; i++) { last = trial(); done++; }
+      renderStats(); renderDots();
+      if (done % 10 === 0) { state.cards = last.cards; state.sets = last.sets; state.example = false; state.hl = -1; state.selected = []; renderBoard(); renderStatus("시뮬레이션 중… " + done + "/100"); }
+      if (done < 100) requestAnimationFrame(step); else finish();
+    }
+    requestAnimationFrame(step);
+  });
+
+  var armTimer = null;
+  function disarm() {
+    var b = $("resetBtn"); b.classList.remove("armed"); b.textContent = "기록 초기화";
+    if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+  }
+  $("resetBtn").addEventListener("click", function () {
+    var b = $("resetBtn");
+    if (!b.classList.contains("armed")) {
+      b.classList.add("armed"); b.textContent = "한 번 더 누르면 초기화";
+      armTimer = setTimeout(disarm, 3000); return;
+    }
+    disarm();
+    state.total = 0; state.none = 0; state.history = [];
+    save(); renderStats(); renderDots();
+  });
+
+  $("relBtn").addEventListener("click", function () {
+    state.relShown = !state.relShown;
+    $("relWrap").hidden = !state.relShown; $("relSub").hidden = !state.relShown;
+    $("relBtn").textContent = state.relShown ? "상대도수 숨기기" : "상대도수 보기";
+    renderStats();
+  });
+
+  $("findBtn").addEventListener("click", function () {
+    if (!state.sets.length) return;
+    state.selected = [];
+    state.hl = (state.hl + 1) % state.sets.length;
+    var trio = state.sets[state.hl].map(function (i) { return cardLabel(state.cards[i]); });
+    $("pick").innerHTML = "<strong>세트 " + (state.hl + 1) + "</strong>: " + trio.join(" / ");
+    paintMarks(); renderStatus();
+  });
+
+  board.addEventListener("click", function (e) {
+    var el = e.target.closest(".card"); if (!el || state.running) return;
+    var i = +el.dataset.i;
+    if (state.hl >= 0) { state.hl = -1; renderStatus(); }
+    if (state.selected.length === 3) state.selected = [];
+    var at = state.selected.indexOf(i);
+    if (at >= 0) state.selected.splice(at, 1); else state.selected.push(i);
+    paintMarks();
+    var pick = $("pick");
+    if (state.selected.length < 3) {
+      pick.innerHTML = state.selected.length ? "카드 " + state.selected.length + "장 선택 · " + (3 - state.selected.length) + "장 더 고르세요." : "카드 3장을 눌러 세트인지 직접 확인해 보세요.";
+      return;
+    }
+    var A = state.selected.map(function (k) { return attr(state.cards[k]); });
+    var bad = [];
+    for (var a = 0; a < 4; a++) {
+      var x = A[0][a], y = A[1][a], z = A[2][a];
+      var allSame = x === y && y === z, allDiff = x !== y && y !== z && x !== z;
+      if (!allSame && !allDiff) bad.push(ATTR_NAME[a]);
+    }
+    pick.innerHTML = bad.length === 0
+      ? "<strong>세트입니다!</strong> 네 가지 속성이 모두 '전부 같음' 또는 '전부 다름'이에요."
+      : "<strong>세트가 아니에요.</strong> " + bad.join(", ") + "에서 두 장만 같고 한 장이 달라요.";
+  });
+
+  // ---- Relative-frequency graph (separate experiment) ----
+  var YMAX = 0.15, REF = 0.032;
+  var g = { n: 0, done: 0, none: 0, pts: [], every: 1, running: false, runs: [] };
+  var canvas = $("chart");
+
+  $("graphToggle").addEventListener("click", function () {
+    var p = $("graphPanel"), open = p.hidden;
+    p.hidden = !open;
+    this.setAttribute("aria-expanded", String(open));
+    this.textContent = open ? "상대도수 그래프 닫기" : "상대도수 그래프 열기";
+    if (open) drawChart();
+  });
+  $("refChk").addEventListener("change", drawChart);
+  window.addEventListener("resize", function () { if (!$("graphPanel").hidden) drawChart(); });
+
+  function fmt(n) { return n.toLocaleString("ko-KR"); }
+  function readout() {
+    if (!g.done) return;
+    var r = g.none / g.done;
+    $("readout").innerHTML = (g.running ? "시뮬레이션 중… " : "") + fmt(g.done) + "회 중 세트 없음 " + fmt(g.none) + "회 → 상대도수 <span class=\"v\">" + r.toFixed(3) + "</span>";
+  }
+  function renderRows() {
+    if (!g.runs.length) return;
+    $("rows").innerHTML = g.runs.map(function (r) {
+      return "<tr><td>" + fmt(r.n) + "회</td><td>" + fmt(r.none) + "회</td><td class=\"rel\">" + (r.none / r.n).toFixed(3) + "</td></tr>";
+    }).join("");
+  }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function drawChart() {
+    var box = canvas.parentNode, W = box.clientWidth, H = box.clientHeight;
+    if (!W || !H) return;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    var L = 46, R = 16, T = 14, B = 34, pw = W - L - R, ph = H - T - B;
+    var fg = css("--muted"), grid = css("--line"), acc = css("--accent"), alert = css("--alert");
+    var N = g.n || 100;
+    var X = function (i) { return L + (i / N) * pw; };
+    var Y = function (v) { return T + (1 - Math.min(v, YMAX) / YMAX) * ph; };
+    ctx.font = "12px " + css("--font-body");
+    ctx.fillStyle = fg; ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    [0, 0.05, 0.10, 0.15].forEach(function (v) {
+      var y = Math.round(Y(v)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
+      ctx.fillText(v.toFixed(2), L - 8, y);
+    });
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+      var i = Math.round(N * f), x = X(i);
+      ctx.fillText(fmt(i), Math.min(Math.max(x, L + 8), L + pw - 14), T + ph + 8);
+    });
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    if ($("refChk").checked) {
+      ctx.save(); ctx.strokeStyle = alert; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
+      var ry = Y(REF); ctx.beginPath(); ctx.moveTo(L, ry); ctx.lineTo(L + pw, ry); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = alert; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+      ctx.fillText("0.032", L + pw, ry - 3);
+    }
+    if (!g.pts.length) return;
+    ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.lineJoin = "round";
+    ctx.beginPath();
+    g.pts.forEach(function (p, k) { var x = X(p[0]), y = Y(p[1]); if (k) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke();
+    var last = g.pts[g.pts.length - 1];
+    ctx.fillStyle = acc; ctx.beginPath(); ctx.arc(X(last[0]), Y(last[1]), 4.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function setGraphRunning(on) {
+    g.running = on;
+    Array.prototype.forEach.call(document.querySelectorAll(".nbtn"), function (b) { b.disabled = on; });
+  }
+  function graphStep(count) {
+    for (var i = 0; i < count && g.done < g.n; i++) {
+      if (findSets(deal()).length === 0) g.none++;
+      g.done++;
+      if (g.done % g.every === 0 || g.done === g.n) g.pts.push([g.done, g.none / g.done]);
+    }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".nbtn"), function (b) {
+    b.addEventListener("click", function () {
+      if (g.running) return;
+      g.n = +b.dataset.n; g.done = 0; g.none = 0; g.pts = [];
+      g.every = Math.max(1, Math.floor(g.n / 800));
+      setGraphRunning(true);
+      var perFrame = Math.max(2, Math.ceil(g.n / 90));
+      function end() {
+        setGraphRunning(false);
+        g.runs.unshift({ n: g.n, none: g.none });
+        if (g.runs.length > 9) g.runs.pop();
+        readout(); renderRows(); drawChart();
+      }
+      if (reduceMotion) { graphStep(g.n); end(); return; }
+      (function frame() {
+        graphStep(perFrame); readout(); drawChart();
+        if (g.done < g.n) requestAnimationFrame(frame); else end();
+      })();
+    });
+  });
+
+  // Opening state: an example layout that is not counted as a trial.
+  var ex = deal();
+  state.cards = ex; state.sets = findSets(ex); state.example = true;
+  renderBoard(); renderStatus(); renderStats(); renderDots();
+})();
+</script>
+</body>
+</html>
